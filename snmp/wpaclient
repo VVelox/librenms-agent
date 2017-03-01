@@ -1,0 +1,168 @@
+#!/usr/bin/env perl
+#Copyright (c) 2017, Zane C. Bowers-Hadley
+#All rights reserved.
+#
+#Redistribution and use in source and binary forms, with or without modification,
+#are permitted provided that the following conditions are met:
+#
+#   * Redistributions of source code must retain the above copyright notice,
+#    this list of conditions and the following disclaimer.
+#   * Redistributions in binary form must reproduce the above copyright notice,
+#    this list of conditions and the following disclaimer in the documentation
+#    and/or other materials provided with the distribution.
+#
+#THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+#ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED 
+#WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+#IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT,
+#INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, 
+#BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, 
+#DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
+#LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
+#OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
+#THE POSSIBILITY OF SUCH DAMAGE.
+
+
+my @interfaces=('wlan0');
+
+my $wpacli='/usr/bin/env wpa_cli';
+
+##
+## You should not need to touch anything below here.
+##
+
+use warnings;
+use strict;
+
+sub bssdidSL{
+	my $bssid=$_[0];
+	my $interface=$_[1];
+	my $wpacli=$_[2];
+
+	#make sure we have a BSSID
+	if ( ! defined($bssid) ){
+		warn 'No BSSDID defined';
+		return undef;
+	}
+
+	#makes sure we have an interface
+	if ( ! defined($interface) ){
+		warn 'No interace defined';
+		return undef;
+	}
+	
+	#if we this set, use the default
+	if ( ! defined($wpacli) ){
+		$wpacli='/usr/bin/env wpa_cli';
+	}
+
+	# don't need to run wpa_scan first as the connected to bssid will always be present
+	my $ssidscan=`$wpacli -i $interface scan_results`;
+	my @ssidscanArray=split( /\n/, $ssidscan );
+	my @bssidLine=grep( /^$bssid/,  @ssidscanArray );
+
+	# takes it and removes the stuff we don't need	
+	my $sl=$bssidLine[0];
+	$sl=~s/[0123456789abcdef\:\s\t]+//;
+	$sl=~s/[\s\t]+.*//;
+	
+	return $sl;
+}
+
+sub bssidFreq{
+	my $bssid=$_[0];
+	my $interface=$_[1];
+	my $wpacli=$_[2];
+
+	#make sure we have a BSSID
+	if ( ! defined($bssid) ){
+		warn 'No BSSDID defined';
+		return undef;
+	}
+
+	#makes sure we have an interface
+	if ( ! defined($interface) ){
+		warn 'No interace defined';
+		return undef;
+	}
+	
+	#if we this set, use the default
+	if ( ! defined($wpacli) ){
+		$wpacli='/usr/bin/env wpa_cli';
+	}
+
+	#we use scan_results here as wpa_cli status tends to improperly return 0
+	my $ssidscan=`$wpacli -i $interface scan_results`;
+	my @ssidscanArray=split( /\n/, $ssidscan );
+	my @bssidLine=grep( /^$bssid/,  @ssidscanArray );
+
+	# takes it and removes the stuff we don't need
+	my $sl=$bssidLine[0];
+	$sl=~s/[0123456789abcdef\:]+//;
+	$sl=~s/^[\s\t]+//;
+	$sl=~s/[\s\t]+.*//;
+
+	return $sl;
+}
+
+sub getBSSID{
+	my $interface=$_[0];
+	my $wpacli=$_[1];
+
+	#makes sure we have an interface
+	if ( ! defined($interface) ){
+		warn 'No interace defined';
+		return undef;
+	}
+	
+	#if we this set, use the default
+	if ( ! defined($wpacli) ){
+		$wpacli='/usr/bin/env wpa_cli';
+	}
+
+	my $returned=`$wpacli -i $interface status`;
+	my @returnedA=split( /\n/, $returned );
+	my ( $bssid )=grep( /bssid/, @returnedA );
+
+	$bssid=~s/^bssid\=//;
+
+	return $bssid;
+}
+
+sub getSSID{
+	my $interface=$_[0];
+	my $wpacli=$_[1];
+
+	#makes sure we have an interface
+	if ( ! defined($interface) ){
+		warn 'No interace defined';
+		return undef;
+	}
+	
+	#if we this set, use the default
+	if ( ! defined($wpacli) ){
+		$wpacli='/usr/bin/env wpa_cli';
+	}
+
+	my $returned=`$wpacli -i $interface status`;
+	my @returnedA=split( /\n/, $returned );
+	my ( $ssid )=grep( /^ssid\=/, @returnedA );
+
+	$ssid=~s/^ssid=//;
+
+	return $ssid;
+}
+
+my $int=0;
+while ( defined( $interfaces[$int] ) ){
+	my $interface=$interfaces[$int];
+
+	my $bssid=getBSSID( $interface, $wpacli );
+	my $ssid=getSSID( $interface, $wpacli );
+	my $SL=bssdidSL( $bssid, $interface, $wpacli );
+	my $freq=bssidFreq( $bssid, $interface, $wpacli );
+
+	print $interface.','.$bssid.','.$SL.','.$freq.','.$ssid."\n";
+	
+	$int++;
+}
