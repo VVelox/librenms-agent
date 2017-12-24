@@ -1,0 +1,368 @@
+#!/usr/bin/env perl
+# Author: Zane C. Bowers-Hadley <vvelox@vvelox.net>
+
+=head1 DESCRIPTION
+
+A basic SNMP extend for parsing Privoxy logs for LibreNMS.
+
+=head1 SWITCHES
+
+=head2 -l <logfile>
+
+The Privoxy logfile to use.
+
+If not defined, '/var/log/privoxy/logfile' is used.
+
+=head2 -L <last file>
+
+This is file contains the line from the log file where parsing left off.
+
+By default it is '/var/log/privoxy/lastline'.
+
+=head2 -p
+
+Pretty print the JSON.
+
+=head1 SNMPD SETUP EXAMPLES
+
+=cut
+
+
+#Copyright (c) 2017, Zane C. Bowers-Hadley
+#All rights reserved.
+#
+#Redistribution and use in source and binary forms, with or without modification,
+#are permitted provided that the following conditions are met:
+#
+#   * Redistributions of source code must retain the above copyright notice,
+#    this list of conditions and the following disclaimer.
+#   * Redistributions in binary form must reproduce the above copyright notice,
+#    this list of conditions and the following disclaimer in the documentation
+#    and/or other materials provided with the distribution.
+#
+#THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+#ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED 
+#WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+#IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT,
+#INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, 
+#BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, 
+#DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
+#LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
+#OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
+#THE POSSIBILITY OF SUCH DAMAGE.
+
+##
+## Mapping
+##
+# atdmt.com ATDMT
+# doubleclick.net DoubleClick
+# agkn.com Neustar
+# 360yield.com Improve Digital
+# afy11.net Cox Media Group
+# crwdcntrl.net Lotame
+# lkqd.net LKQD Technologies   ((video ads))
+# smartclip.net Smartclip     ((video ads))
+# adadvisor.net Neustar
+# mediaplex.com Conversant    ((possible video))
+# netdna-ssl.com MaxCDN
+# yldbt.com Yieldbot
+# advertising.com Verizon
+# freeskreen.com  SlimCut Media   ((video ads))
+# pro-market.net Datonics
+# pubmatic.com Pubmatic
+# rubiconproject.com Rubicon Project
+# stickyadstv.com StickyADS
+# thehiveworks.com Hiveworks Comics
+# contextweb.com PulsePoint
+# statcounter.com StatCounter
+# omtrdc.net Adobe
+# 2o7.net Adobe
+# imrworldwide.com IMR Worldwide
+# yahoo.com Yahoo
+# bounceexchange.com Bounce Exchange
+# google.com Google
+# ru4.com RU4.com
+# disqusads.com Disqus
+# fwmrm.net Comcast
+# casalemedia.com Casale Media
+# extreme-dm.com eXTReMe Tracking
+# quantserve.com Quantcast
+# pubmatic.com PubMatic
+# adnxs.com AppNexus
+# adsrvr.org Trade Desk, The
+# datasphere.com DataSphere
+# googleadservices.com Google
+# googlesyndication.com Google
+# chartbeat.net Chartbeat
+# piperka.net Piperka
+# revsci.net Audience Science
+# gamesrevenue.com GamesRevenue
+# scorecardresearch.com ScorecardResearch
+# fastclick.net Conversant
+# medleyads.com Medley
+# google-analytics.com Google
+# criteo.net Criteo
+# webtrendslive.com WebTrends
+# t.co Twitter
+# contextweb.com PulsePoint
+# deployads.com Sortable
+# tynt.com 33Across
+# ero-advertising.com EroAdvertising
+# and.co.uk Associated Northcliffe Digital
+# burstnet.com BURST Media
+# clickthulu.com Clickthulu
+# projectwonderful.com Project Wonderful
+# smartadserver.com Smart AdServer
+# moatads.com Moat
+# playtika.com Playtika ((seems to come up on from mobile devises, watching from watching transparrent proxy logs))
+
+use strict;
+use warnings;
+use Carp;
+use Getopt::Std;
+use File::ReadBackwards;
+
+$Getopt::Std::STANDARD_HELP_VERSION = 1;
+sub main::VERSION_MESSAGE {
+	print "privoxy log parser SNMP extend 0.0.0\n";
+	return;
+};
+
+sub main::HELP_MESSAGE {
+	print "-l <log file>   The log file to parse.\n".
+		"-L <last line file>   The line in the log file at the time is stored here.\n".
+		"-p   Pretty print the resulting JSON.\n";
+
+	return;
+}
+
+#the privoxy log file
+my $log='/var/log/privoxy/logfile';
+#this file holds where processing should run till when reading it backwards
+my $lastfile='/var/log/privoxy/lastline';
+
+#gets the options
+my %opts=();
+getopts('pL:l:', \%opts);
+
+my %companiess=(
+	'33Across'=>0,
+	'Adobe'=>0,
+	'AppNexus'=>0,
+	'Associated Northcliffe Digital'=>0,
+	'ATDMT'=>0,
+	'Audience Science'=>0,
+	'Bounce Exchange'=>0,
+	'BURST Media'=>0,
+	'Casale Media'=>0,
+	'Chartbeat'=>0,
+	'Clickthulu'=>0,
+	'Comcast'=>0,
+	'Conversant'=>0,
+	'Cox Media Group'=>0,
+	'Criteo'=>0,
+	'DataSphere'=>0,
+	'Datonics'=>0,
+	'Disqus'=>0,
+	'DoubleClick'=>0,
+	'EroAdvertising'=>0,
+	'eXTReMe Tracking'=>0,
+	'GamesRevenue'=>0,
+	'Google'=>0,
+	'Hiveworks Comics'=>0,
+	'Improve Digital'=>0,
+	'IMR Worldwide'=>0,
+	'LKQD Technologies'=>0,
+	'Lotame'=>0,
+	'MaxCDN'=>0,
+	'Medley'=>0,
+	'Moat'=>0,
+	'Neustar'=>0,
+	'Piperka'=>0,
+	'Project Wonderful'=>0,
+	'Pubmatic'=>0,
+	'PubMatic'=>0,
+	'PulsePoint'=>0,
+	'Quantcast'=>0,
+	'RU4.com'=>0,
+	'Rubicon Project'=>0,
+	'ScorecardResearch'=>0,
+	'SlimCut Media'=>0,
+	'Smart AdServer'=>0,
+	'Smartclip'=>0,
+	'Sortable'=>0,
+	'StatCounter'=>0,
+	'StickyADS'=>0,
+	'Trade Desk, The'=>0,
+	'Twitter'=>0,
+	'Verizon'=>0,
+	'WebTrends'=>0,
+	'Yahoo'=>0,
+	'Yieldbot'=>0,
+	'Playtika'=>0,
+	);
+
+my %mobileDomains=(
+	'playtika.com'=>'1',
+	);
+
+my %videoDomains=(
+	'lkqd.net'=>'1',
+	'smartclip.net'=>'1',
+	'freeskreen.com'=>'1',
+	);
+
+my %possibleVideoDomains=(
+	'mediaplex.com'=>'1',
+	);
+
+my %domainToCompany=(
+	'atdmt.com'=>'ATDMT',
+	'doubleclick.net'=>'DoubleClick',
+	'agkn.com'=>'Neustar',
+	'360yield.com'=>'Improve Digital',
+	'afy11.net'=>'Cox Media Group',
+	'crwdcntrl.net'=>'Lotame',
+	'lkqd.net'=>'LKQD Technologies',
+	'smartclip.net'=>'Smartclip',
+	'adadvisor.net'=>'Neustar',
+	'mediaplex.com'=>'Conversant',
+	'netdna-ssl.com'=>'MaxCDN',
+	'yldbt.com'=>'Yieldbot',
+	'advertising.com'=>'Verizon',
+	'freeskreen.com'=>'SlimCut Media',
+	'pro-market.net'=>'Datonics',
+	'pubmatic.com'=>'Pubmatic',
+	'rubiconproject.com'=>'Rubicon Project',
+	'stickyadstv.com'=>'StickyADS',
+	'thehiveworks.com'=>'Hiveworks Comics',
+	'contextweb.com'=>'PulsePoint',
+	'statcounter.com'=>'StatCounter',
+	'omtrdc.net'=>'Adobe',
+	'2o7.net'=>'Adobe',
+	'imrworldwide.com'=>'IMR Worldwide',
+	'yahoo.com'=>'Yahoo',
+	'bounceexchange.com'=>'Bounce Exchange',
+	'google.com'=>'Google',
+	'ru4.com'=>'RU4.com',
+	'disqusads.com'=>'Disqus',
+	'fwmrm.net'=>'Comcast',
+	'casalemedia.com'=>'Casale Media',
+	'extreme-dm.com'=>'eXTReMe Tracking',
+	'quantserve.com'=>'Quantcast',
+	'pubmatic.com'=>'PubMatic',
+	'adnxs.com'=>'AppNexus',
+	'adsrvr.org'=>'Trade Desk, The',
+	'datasphere.com'=>'DataSphere',
+	'googleadservices.com'=>'Google',
+	'googlesyndication.com'=>'Google',
+	'chartbeat.net'=>'Chartbeat',
+	'piperka.net'=>'Piperka',
+	'revsci.net'=>'Audience Science',
+	'gamesrevenue.com'=>'GamesRevenue',
+	'scorecardresearch.com'=>'ScorecardResearch',
+	'fastclick.net'=>'Conversant',
+	'medleyads.com'=>'Medley',
+	'google-analytics.com'=>'Google',
+	'criteo.net'=>'Criteo',
+	'webtrendslive.com'=>'WebTrends',
+	't.co'=>'Twitter',
+	'contextweb.com'=>'PulsePoint',
+	'deployads.com'=>'Sortable',
+	'tynt.com'=>'33Across',
+	'ero-advertising.com'=>'EroAdvertising',
+	'and.co.uk'=>'Associated Northcliffe Digital',
+	'burstnet.com'=>'BURST Media',
+	'clickthulu.com'=>'Clickthulu',
+	'projectwonderful.com'=>'Project Wonderful',
+	'smartadserver.com'=>'Smart AdServer',
+	'moatads.com'=>'Moat',
+	'playtika.com'=>'Playtika',
+	);
+
+my @domain_list=keys( %domainToCompany );
+
+my %protocols=(
+	'http'=>0,
+	'https'=>0,
+	'other'=>0,
+	);
+
+#init the BW read
+my $bw = File::ReadBackwards->new( $log ) or croak "can't read $log $!";
+
+my $new_last_line=undef;
+while( defined( my $log_line = $bw->readline ) ) {
+	#save the last line or die
+	if (!defined($new_last_line)){
+		$new_last_line=$log_line;
+
+		print "last line: ".$new_last_line;
+		
+		#open(my $fh, ">", $lastfile) or croak "can't open $lastfile $!";
+		#print $fh $last_line;
+		#close $fh;
+	}
+
+	#break the line apart
+	#I am not sure what the item I am shoving into $garbage is
+	chomp($log_line);
+	my ( $date, $time, $garbage, $crunch, $blocked, $url ) = split( / /, $log_line, 6 );
+
+	#don't process the log turn over line
+	my $valid_url=1;
+	if ( $url eq 'logfile turned over' ){
+		$valid_url=0;
+	}
+
+	#
+
+	#if we have a valid URL, break it down
+	if ( $valid_url ){
+		#we may use the URL some time in the future or the like
+		my $domain=$url;
+
+		#since we are breaking it down to the URL, we don't care about capitalization
+		#and our data is only lowercase
+		$domain=lc($domain);
+
+		#figure out what the protocol is
+		if (
+			# HTTPS proto check
+			(
+			 ( $domain !~ /^http\:\/\// ) && 
+			 ( $domain !~ /^.*\:\/\// ) && # should never see https or the like, but just being sure
+			 ( $domain =~ /\:443$/ )
+			) || (
+			 ( $domain =~ /^https\:\/\// ) && # explicitly check we have a https URL, which I've not seen privoxy throw yet, just domain name and port
+			 ( $domain =~ /\:443$/ )				
+			)
+			){
+			$protocols{'https'}++;
+
+			#make sure we have just the domain name
+			$domain=~s/https\:\/\///x;
+			$domain=~s/\:443$//x
+		}elsif(
+			# HTTP check
+			$domain =~ /^http\:\/\//
+			){
+			$protocols{'http'}++;
+
+			#make sure we have just the domain name
+			$domain=~s/http\:\/\///x;
+			$domain=~s/\/.*//x;
+		}else{
+			# we should enver get there, but if we do, log it
+			$protocols{'other'}++;
+			
+			#make sure we have just the domain name
+			$domain =~ s/^.*\:\/\///x;
+			$domain=~s/\/.*//x;
+		}
+
+
+	
+	}
+}
+
