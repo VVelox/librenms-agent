@@ -121,6 +121,7 @@ use warnings;
 use Carp;
 use Getopt::Std;
 use File::ReadBackwards;
+use JSON;
 
 $Getopt::Std::STANDARD_HELP_VERSION = 1;
 sub main::VERSION_MESSAGE {
@@ -145,7 +146,7 @@ my $lastfile='/var/log/privoxy/lastline';
 my %opts=();
 getopts('pL:l:', \%opts);
 
-my %companiess=(
+my %companies=(
 	'33Across'=>0,
 	'Adobe'=>0,
 	'AppNexus'=>0,
@@ -202,18 +203,20 @@ my %companiess=(
 	'Playtika'=>0,
 	);
 
+my @companies_list=keys( %companies );
+
 my %mobileDomains=(
-	'playtika.com'=>'1',
+	'playtika.com'=>'0',
 	);
 
 my %videoDomains=(
-	'lkqd.net'=>'1',
-	'smartclip.net'=>'1',
-	'freeskreen.com'=>'1',
+	'lkqd.net'=>'0',
+	'smartclip.net'=>'0',
+	'freeskreen.com'=>'0',
 	);
 
 my %possibleVideoDomains=(
-	'mediaplex.com'=>'1',
+	'mediaplex.com'=>'0',
 	);
 
 my %domainToCompany=(
@@ -296,9 +299,7 @@ while( defined( my $log_line = $bw->readline ) ) {
 	#save the last line or die
 	if (!defined($new_last_line)){
 		$new_last_line=$log_line;
-
-		print "last line: ".$new_last_line;
-		
+	
 		#open(my $fh, ">", $lastfile) or croak "can't open $lastfile $!";
 		#print $fh $last_line;
 		#close $fh;
@@ -361,8 +362,119 @@ while( defined( my $log_line = $bw->readline ) ) {
 			$domain=~s/\/.*//x;
 		}
 
+		# true for when we the domain is not matched
+		my $domain_unmatched=1;
 
-	
+		# the domain we matched
+		my $domain_matched;
+		
+		#first we check for exact domain matches
+		my $domain_list_int=0;
+		while ( 
+			defined( $domain_list[ $domain_list_int ] ) &&
+			$domain_unmatched
+			){
+			my $toMatch=$domain_list[ $domain_list_int ];
+
+			if ( $domain =~ /^$toMatch$/ ){
+				$domain_unmatched=0;
+				$domain_matched=$domain_list[ $domain_list_int ]
+			}
+			
+			$domain_list_int++;
+		}
+
+		#second we check for if it is a subdomain of a domain we have
+		$domain_list_int=0;
+		while ( 
+			defined( $domain_list[ $domain_list_int ] ) &&
+			$domain_unmatched
+			){
+			my $toMatch='.'.$domain_list[ $domain_list_int ];
+
+			if ( $domain =~ /$toMatch$/ ){
+				$domain_unmatched=0;
+				$domain_matched=$domain_list[ $domain_list_int ]
+			}
+
+			$domain_list_int++;
+		}
+
+		if ( defined( $videoDomains{ $domain_matched } ) ){
+			$videoDomains{ $domain_matched }++;
+		}
+		if ( defined( $possibleVideoDomains{ $domain_matched } ) ){
+			$possibleVideoDomains{ $domain_matched }++;
+		}
+		if ( defined( $mobileDomains{ $domain_matched } ) ){
+			$mobileDomains{ $domain_matched }++;
+		}
+		
+		my $company=$domainToCompany{$domain_matched};
+		$companies{$company}++;
 	}
 }
 
+# total all video domains hit
+my $videoDomains_total=0;
+my @videoDomains_list=keys( %videoDomains );
+my $videoDomains_int=0;
+while ( defined( $videoDomains_list[ $videoDomains_int ] ) ){
+	my $domain=$videoDomains_list[ $videoDomains_int ];
+	$videoDomains_total= $videoDomains{ $domain } + $videoDomains_total;
+	
+	$videoDomains_int++;
+}
+
+# total all possible video domains hit
+my $possibleVideoDomains_total=0;
+my @possibleVideoDomains_list=keys( %possibleVideoDomains );
+my $possibleVideoDomains_int=0;
+while ( defined( $possibleVideoDomains_list[ $possibleVideoDomains_int ] ) ){
+	my $domain=$possibleVideoDomains_list[ $possibleVideoDomains_int ];
+	$possibleVideoDomains_total = $possibleVideoDomains{ $domain } + $possibleVideoDomains_total;
+	
+	$possibleVideoDomains_int++;
+}
+
+# total all mobile domains hit
+my $mobileDomains_total=0;
+my @mobileDomains_list=keys( %mobileDomains );
+my $mobileDomains_int=0;
+while ( defined( $mobileDomains_list[ $mobileDomains_int ] ) ){
+	my $domain=$mobileDomains_list[ $mobileDomains_int ];
+	$mobileDomains_total = $mobileDomains{ $domain } + $mobileDomains_total;
+	
+	$mobileDomains_int++;
+}
+
+#total blocked
+my $total=0;
+my $companies_int=0;
+while ( defined( $companies_list[ $companies_int ] ) ){
+	my $company=$companies_list[ $companies_int ];
+	$total=$companies{$company}+$total;
+	
+	$companies_int++;
+}
+
+#put together the object that will be returned
+my %toReturn=(
+	'total'=>$total,
+	'companies'=>\%companies,
+	'protocols'=>\%protocols,
+	'mobileTotal'=>$mobileDomains_total,
+	'videoTotal'=>$videoDomains_total,
+	'possibleVideoTotal'=>$possibleVideoDomains_total,
+	);
+
+#render it
+my $j=JSON->new;
+if ( $opts{p} ){
+        $j->pretty(1);
+}
+print $j->encode( \%toReturn );
+if (! $opts{p} ){
+        print "\n";
+}
+exit 0;
