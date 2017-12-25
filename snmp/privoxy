@@ -51,71 +51,6 @@ Pretty print the JSON.
 #OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
 #THE POSSIBILITY OF SUCH DAMAGE.
 
-##
-## Mapping
-##
-# atdmt.com ATDMT
-# doubleclick.net DoubleClick
-# agkn.com Neustar
-# 360yield.com Improve Digital
-# afy11.net Cox Media Group
-# crwdcntrl.net Lotame
-# lkqd.net LKQD Technologies   ((video ads))
-# smartclip.net Smartclip     ((video ads))
-# adadvisor.net Neustar
-# mediaplex.com Conversant    ((possible video))
-# netdna-ssl.com MaxCDN
-# yldbt.com Yieldbot
-# advertising.com Verizon
-# freeskreen.com  SlimCut Media   ((video ads))
-# pro-market.net Datonics
-# pubmatic.com Pubmatic
-# rubiconproject.com Rubicon Project
-# stickyadstv.com StickyADS
-# thehiveworks.com Hiveworks Comics
-# contextweb.com PulsePoint
-# statcounter.com StatCounter
-# omtrdc.net Adobe
-# 2o7.net Adobe
-# imrworldwide.com IMR Worldwide
-# yahoo.com Yahoo
-# bounceexchange.com Bounce Exchange
-# google.com Google
-# ru4.com RU4.com
-# disqusads.com Disqus
-# fwmrm.net Comcast
-# casalemedia.com Casale Media
-# extreme-dm.com eXTReMe Tracking
-# quantserve.com Quantcast
-# pubmatic.com PubMatic
-# adnxs.com AppNexus
-# adsrvr.org Trade Desk, The
-# datasphere.com DataSphere
-# googleadservices.com Google
-# googlesyndication.com Google
-# chartbeat.net Chartbeat
-# piperka.net Piperka
-# revsci.net Audience Science
-# gamesrevenue.com GamesRevenue
-# scorecardresearch.com ScorecardResearch
-# fastclick.net Conversant
-# medleyads.com Medley
-# google-analytics.com Google
-# criteo.net Criteo
-# webtrendslive.com WebTrends
-# t.co Twitter
-# contextweb.com PulsePoint
-# deployads.com Sortable
-# tynt.com 33Across
-# ero-advertising.com EroAdvertising
-# and.co.uk Associated Northcliffe Digital
-# burstnet.com BURST Media
-# clickthulu.com Clickthulu
-# projectwonderful.com Project Wonderful
-# smartadserver.com Smart AdServer
-# moatads.com Moat
-# playtika.com Playtika ((seems to come up on from mobile devises, watching from watching transparrent proxy logs))
-
 use strict;
 use warnings;
 use Carp;
@@ -201,6 +136,8 @@ my %companies=(
 	'Yahoo'=>0,
 	'Yieldbot'=>0,
 	'Playtika'=>0,
+	'RoughTed'=>0, # did not come across during my research, but found in uBlockOrigin stuff
+	'Tealium'=>0, # did not come across during my research, but found in uBlockOrigin stuff
 	);
 
 my @companies_list=keys( %companies );
@@ -281,9 +218,21 @@ my %domainToCompany=(
 	'smartadserver.com'=>'Smart AdServer',
 	'moatads.com'=>'Moat',
 	'playtika.com'=>'Playtika',
+	'roughted.com'=>'RoughTed',
+	'tags.tiqcdn.com'=>'Tealium',
+	'youtube.com'=>'Google',
 	);
 
 my @domain_list=keys( %domainToCompany );
+
+#zero each domain
+my %domains=%domainToCompany;
+my $domains_int=0;
+while ( defined( $domain_list[ $domains_int ] ) ){
+	$domains{ $domain_list[ $domains_int ] }=0;
+	
+	$domains_int++;
+}
 
 my %protocols=(
 	'http'=>0,
@@ -409,7 +358,11 @@ while( defined( my $log_line = $bw->readline ) ) {
 		if ( defined( $mobileDomains{ $domain_matched } ) ){
 			$mobileDomains{ $domain_matched }++;
 		}
-		
+
+		#increment the domain matched
+		$domains{ $domain_matched } = $domains{ $domain_matched } + 1;
+
+		#increment the company matched		
 		my $company=$domainToCompany{$domain_matched};
 		$companies{$company}++;
 	}
@@ -464,8 +417,12 @@ my %toReturn=(
 	'companies'=>\%companies,
 	'protocols'=>\%protocols,
 	'mobileTotal'=>$mobileDomains_total,
+	'mobiledomains'=>\%mobileDomains,
 	'videoTotal'=>$videoDomains_total,
+	'videoDomains'=>\%videoDomains,
 	'possibleVideoTotal'=>$possibleVideoDomains_total,
+	'possibleVideoDomains'=>\%possibleVideoDomains,
+	'domains'=>\%domains,
 	);
 
 #render it
@@ -477,4 +434,5 @@ print $j->encode( \%toReturn );
 if (! $opts{p} ){
         print "\n";
 }
-exit 0;
+#exit 0;
+
