@@ -136,6 +136,8 @@ my %companies=(
 	'Yahoo'=>0,
 	'Yieldbot'=>0,
 	'Playtika'=>0,
+	'ExoClick'=>0,
+	'Amazon'=>0,
 	'RoughTed'=>0, # did not come across during my research, but found in uBlockOrigin stuff
 	'Tealium'=>0, # did not come across during my research, but found in uBlockOrigin stuff
 	);
@@ -221,6 +223,8 @@ my %domainToCompany=(
 	'roughted.com'=>'RoughTed',
 	'tags.tiqcdn.com'=>'Tealium',
 	'youtube.com'=>'Google',
+	'exoclick.com'=>'ExoClick',
+	'amazon-adsystem.com'=>'Amazon',
 	);
 
 my @domain_list=keys( %domainToCompany );
