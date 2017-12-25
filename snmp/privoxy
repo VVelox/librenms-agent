@@ -240,32 +240,52 @@ my %protocols=(
 	'other'=>0,
 	);
 
+#gets the old last line
+my $last_line="----------NONE-------\n\n"; #set the default to something that shoul never match
+if ( -f $lastfile ){
+	open( my $fh, '<' , $lastfile ) or croak "can't read $log $!";
+	$last_line=readline($fh);
+	close $fh;
+}
+
 #init the BW read
 my $bw = File::ReadBackwards->new( $log ) or croak "can't read $log $!";
 
 my $new_last_line=undef;
-while( defined( my $log_line = $bw->readline ) ) {
+my $last_not_found=1;
+while(
+	(defined( my $log_line = $bw->readline )) &&
+	$last_not_found
+	) {
 	#save the last line or die
 	if (!defined($new_last_line)){
 		$new_last_line=$log_line;
 	
-		#open(my $fh, ">", $lastfile) or croak "can't open $lastfile $!";
-		#print $fh $last_line;
-		#close $fh;
+		open(my $fh, ">", $lastfile) or croak "can't open $lastfile $!";
+		print $fh $new_last_line;
+		close $fh;
 	}
 
-	#break the line apart
-	#I am not sure what the item I am shoving into $garbage is
-	chomp($log_line);
-	my ( $date, $time, $garbage, $crunch, $blocked, $url ) = split( / /, $log_line, 6 );
-
-	#don't process the log turn over line
 	my $valid_url=1;
-	if ( $url eq 'logfile turned over' ){
-		$valid_url=0;
+	my ( $date, $time, $garbage, $crunch, $blocked, $url );
+	if ( $log_line eq $last_line ){
+		$last_not_found=0; #we found it, so stop processing it...
+		$valid_url=0; #don't process this line as we had previously
+	}else{
+		#
+		
+		#break the line apart
+		#I am not sure what the item I am shoving into $garbage is
+		chomp($log_line);
+		( $date, $time, $garbage, $crunch, $blocked, $url ) = split( / /, $log_line, 6 );
+		
+		#don't process the log turn over line
+		my $valid_url=1;
+		if ( $url eq 'logfile turned over' ){
+			$valid_url=0;
+		}
+		
 	}
-
-	#
 
 	#if we have a valid URL, break it down
 	if ( $valid_url ){
