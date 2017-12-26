@@ -194,7 +194,7 @@ my %domainToCompany=(
 	'quantserve.com'=>'Quantcast',
 	'pubmatic.com'=>'PubMatic',
 	'adnxs.com'=>'AppNexus',
-	'adsrvr.org'=>'Trade Desk, The',
+	'adsrvr.Org'=>'Trade Desk, The',
 	'datasphere.com'=>'DataSphere',
 	'googleadservices.com'=>'Google',
 	'googlesyndication.com'=>'Google',
@@ -458,5 +458,4 @@ print $j->encode( \%toReturn );
 if (! $opts{p} ){
         print "\n";
 }
-#exit 0;
-
+exit 0;
