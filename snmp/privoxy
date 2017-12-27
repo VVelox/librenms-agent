@@ -139,6 +139,7 @@ my %companies=(
 	'Amazon'=>0,
 	'RoughTed'=>0, # did not come across during my research, but found in uBlockOrigin stuff
 	'Tealium'=>0, # did not come across during my research, but found in uBlockOrigin stuff
+	'___uncertain___'=>0, # hits, but nothing on the list
 	);
 
 my @companies_list=keys( %companies );
@@ -223,6 +224,7 @@ my %domainToCompany=(
 	'youtube.com'=>'Google',
 	'exoclick.com'=>'ExoClick',
 	'amazon-adsystem.com'=>'Amazon',
+	'___other___'=>'___uncertain___',
 	);
 
 my @domain_list=keys( %domainToCompany );
@@ -333,9 +335,6 @@ while(
 			$domain=~s/\/.*//x;
 		}
 
-		# true for when we the domain is not matched
-		my $domain_unmatched=1;
-
 		# the domain we matched
 		my $domain_matched;
 		
@@ -343,34 +342,40 @@ while(
 		my $domain_list_int=0;
 		while ( 
 			defined( $domain_list[ $domain_list_int ] ) &&
-			$domain_unmatched
+			( ! defined( $domain_matched ) )
 			){
 			my $toMatch=$domain_list[ $domain_list_int ];
 
 			if ( $domain =~ /^$toMatch$/ ){
-				$domain_unmatched=0;
-				$domain_matched=$domain_list[ $domain_list_int ]
+				$domain_matched=$domain_list[ $domain_list_int ];
 			}
-			
+
 			$domain_list_int++;
 		}
 
+#		if ( ! defined( $domain_matched ) ){
+#			$domains{'___other___'}++;
+#		}
+		
 		#second we check for if it is a subdomain of a domain we have
 		$domain_list_int=0;
 		while ( 
 			defined( $domain_list[ $domain_list_int ] ) &&
-			$domain_unmatched
+			( ! defined( $domain_matched ) )
 			){
 			my $toMatch='.'.$domain_list[ $domain_list_int ];
 
 			if ( $domain =~ /$toMatch$/ ){
-				$domain_unmatched=0;
-				$domain_matched=$domain_list[ $domain_list_int ]
+				$domain_matched=$domain_list[ $domain_list_int ];
 			}
 
 			$domain_list_int++;
 		}
 
+		if ( ! defined( $domain_matched ) ){
+			$domain_matched='___other___';
+		}
+		
 		if ( defined( $videoDomains{ $domain_matched } ) ){
 			$videoDomains{ $domain_matched }++;
 		}
@@ -380,10 +385,10 @@ while(
 		if ( defined( $mobileDomains{ $domain_matched } ) ){
 			$mobileDomains{ $domain_matched }++;
 		}
-
+		
 		#increment the domain matched
 		$domains{ $domain_matched } = $domains{ $domain_matched } + 1;
-
+		
 		#increment the company matched		
 		my $company=$domainToCompany{$domain_matched};
 		$companies{$company}++;
