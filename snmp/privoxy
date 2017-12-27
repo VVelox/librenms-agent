@@ -137,6 +137,7 @@ my %companies=(
 	'Playtika'=>0,
 	'ExoClick'=>0,
 	'Amazon'=>0,
+	'Nexage'=>0,
 	'RoughTed'=>0, # did not come across during my research, but found in uBlockOrigin stuff
 	'Tealium'=>0, # did not come across during my research, but found in uBlockOrigin stuff
 	'___uncertain___'=>0, # hits, but nothing on the list
@@ -146,6 +147,7 @@ my @companies_list=keys( %companies );
 
 my %mobileDomains=(
 	'playtika.com'=>'0',
+	'nexage.com'=>'0',
 	);
 
 my %videoDomains=(
@@ -224,6 +226,7 @@ my %domainToCompany=(
 	'youtube.com'=>'Google',
 	'exoclick.com'=>'ExoClick',
 	'amazon-adsystem.com'=>'Amazon',
+	'nexage.com'=>'Nexage',
 	'___other___'=>'___uncertain___',
 	);
 
