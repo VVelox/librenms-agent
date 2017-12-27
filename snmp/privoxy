@@ -138,6 +138,7 @@ my %companies=(
 	'ExoClick'=>0,
 	'Amazon'=>0,
 	'Nexage'=>0,
+	'Meme Video'=>0,
 	'RoughTed'=>0, # did not come across during my research, but found in uBlockOrigin stuff
 	'Tealium'=>0, # did not come across during my research, but found in uBlockOrigin stuff
 	'___uncertain___'=>0, # hits, but nothing on the list
@@ -227,6 +228,8 @@ my %domainToCompany=(
 	'exoclick.com'=>'ExoClick',
 	'amazon-adsystem.com'=>'Amazon',
 	'nexage.com'=>'Nexage',
+	'memevideoad.com'=>'Meme Video',
+	'turn.com'=>'___certain___',
 	'___other___'=>'___uncertain___',
 	);
 
@@ -355,10 +358,6 @@ while(
 
 			$domain_list_int++;
 		}
-
-#		if ( ! defined( $domain_matched ) ){
-#			$domains{'___other___'}++;
-#		}
 		
 		#second we check for if it is a subdomain of a domain we have
 		$domain_list_int=0;
