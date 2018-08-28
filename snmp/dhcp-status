@@ -1,0 +1,146 @@
+#!/usr/local/bin/perl
+
+=head1 DESCRIPTION
+
+This is a SNMP extend for ISC DHCPD lease stats for use with LibreNMS.
+
+For more information, see L<https://docs.librenms.org/#Extensions/Applications/#dhcpstats>.
+
+=head1 SWITCHES
+
+=head2 -l <leases file>
+
+The location of the DHCP leases file.
+
+=head2 -p
+
+Pretty print the JSON.
+
+=head1 SNMPD SETUP EXAMPLES
+
+Below is a basic example of setting it up snmpd.conf for NetSNMP.
+
+    extend dhcpstats /etc/snmp/dhcp-status
+
+=cut
+
+#Copyright (c) 2018, Zane C. Bowers-Hadley
+#All rights reserved.
+#
+#Redistribution and use in source and binary forms, with or without modification,
+#are permitted provided that the following conditions are met:
+#
+#   * Redistributions of source code must retain the above copyright notice,
+#    this list of conditions and the following disclaimer.
+#   * Redistributions in binary form must reproduce the above copyright notice,
+#    this list of conditions and the following disclaimer in the documentation
+#    and/or other materials provided with the distribution.
+#
+#THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+#ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+#WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+#IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT,
+#INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
+#BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+#DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
+#LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
+#OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
+#THE POSSIBILITY OF SUCH DAMAGE.
+
+use strict;
+use warnings;
+use JSON;
+use Getopt::Std;
+
+sub return_json{
+	my $to_return=$_[0];
+	my $pretty=$_[1];
+	
+	#finally render the JSON
+	my $j=JSON->new;
+	if ( $pretty ){
+        $j->pretty(1);
+	}
+	print $j->encode( $to_return );
+	if ( ! $pretty ){
+		print "\n";
+	}
+}
+
+#gets the options
+my %opts=();
+getopts('pl:', \%opts);
+
+$Getopt::Std::STANDARD_HELP_VERSION = 1;
+sub main::VERSION_MESSAGE {
+	print "dhcpstats SNMP extend 0.0.0\n";
+}
+
+sub main::HELP_MESSAGE {
+	print "\n".
+		"-l <lease file>   The file containing the leases.\n".
+		"-p   Print the JSON in a pretty manner.\n";
+	exit 0;
+}
+
+my $leases='/var/db/dhcpd/dhcpd.leases';
+if (defined($opts{l})){
+	$leases=$opts{l};
+}
+
+my $VERSION=1;
+
+#the data to return
+my %to_return;
+$to_return{version}=$VERSION;
+$to_return{error}='0';
+$to_return{errorString}='';
+$to_return{data}={
+	'total'=>0,
+		'active'=>0,
+		'expired'=>0,
+		'released'=>0,
+		'abandoned'=>0,
+		'reset'=>0,
+		'bootp'=>0,
+		'backup'=>0,
+		'free'=>0,
+		'total'=>0,
+};
+
+#opens the lease file and error if it can't
+my $fh;
+if (!open( $fh, '<', $leases)){
+	$to_return{error}=1;
+	$to_return{errorString}='unable to open the "'.$leases.'"';
+	
+	return_json(\%to_return, $opts{p});
+	exit $to_return{error};
+}
+
+# checks each line for if it is one to count
+foreach my $line ( readline( $fh ) ){
+	if ( $line =~ /^ *binding\ state\ active/){
+		$to_return{data}{active}++;
+	} elsif ( $line =~ /^ *binding state expired\;/ ){
+		$to_return{data}{expired}++;
+	} elsif ( $line =~ /^ *binding state released\;/ ){
+		$to_return{data}{released}++;
+	} elsif ( $line =~ /^ *binding state abandoned\;/ ){
+		$to_return{data}{abandonned}++;
+	} elsif ( $line =~ /^ *binding state reset\;/){
+		$to_return{data}{reset}++;
+	} elsif ( $line =~ /^ *binding state bootp\;/){
+		$to_return{data}{bootp}++;
+	} elsif ( $line =~ /^ *binding state backup\;/){
+		$to_return{data}{backup}++;
+	} elsif ( $line =~ /^ *binding state free\;/){
+		$to_return{data}{free}++;
+	} elsif ( $line =~ /^lease/){
+		$to_return{data}{total}++;
+	}
+}
+close($fh);
+
+#return the JSON
+return_json(\%to_return, $opts{p});
