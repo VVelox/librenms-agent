@@ -1,0 +1,43 @@
+#!/usr/bin/env perl
+
+# count of queted items in the worker queue
+select count(*) from workerqueue where done = 0;
+
+# known users
+select count(*) from `account-user`
+
+# new acccounts seen in last 5 minutes
+select count(*) from `account-user-view` where created > date_sub(now(),interval 5 minute);
+
+# accounts updated in last 5 minutes
+select count(*) from `account-user-view` where created > date_sub(now(),interval 5 minute);
+
+# posts in last 5 minutes
+select count(*) from `post` where created > date_sub(now(),interval 5 minute);
+
+# edited in last 5 minutes
+select count(*) from `post` where edited > date_sub(now(),interval 5 minute);
+
+# posts received
+select count(*) from `post` where received > date_sub(now(),interval 5 minute);
+
+# events created in last 5 minutes
+select count(*) from `event` where created > date_sub(now(),interval 5 minute);
+
+# events edited in last 5 minutes
+select count(*) from `event` where edited > date_sub(now(),interval 5 minute);
+
+# parsed urls in last 5 minutes
+select count(*) from `parsed_url` where created > date_sub(now(),interval 5 minute);
+
+# number of reports
+select count(*) from `report`
+
+# reports in last 5 minutes
+select count(*) from `report` where created > date_sub(now(),interval 5 minute);
+
+# total pending registerations
+select count(*) from register
+
+# new pending registrations in last 5 minutes
+select count(*) from register where created > date_sub(now(),interval 5 minute);
