@@ -1,5 +1,54 @@
 #!/usr/bin/env perl
 
+=head1 DESCRIPTION
+
+This is a SNMP extend for monitoring Postgres via LibreNMS using SNMP.
+
+For more information, see L<https://docs.librenms.org/#Extensions/Applications/#Postgres>.
+
+=head1 SWITCHES
+
+=head2 -p
+
+Pretty print the JSON. If used with -b, this switch will be ignored.
+
+=head2 -b
+
+Gzip the output and convert to Base64.
+
+=head2 -c <config>
+
+Config TOML.
+
+Default: /usr/local/etc/librenms_pg_extend.toml
+
+=head2 -h
+
+Print help.
+
+=head2 -v
+
+Print version.
+
+=head1 Config TOML Keys
+
+    - dsn :: DSN to use for connection.
+        Default :: "dbi:Pg:dbname=postgres"
+
+    - user :: User to use.
+        Default :: ""
+
+    - pass :: Password to use.
+        Default :: ""
+
+Or...
+
+    dsn="dbi:Pg:dbname=postgres"
+    user=""
+    pass=""
+
+=cut
+
 use strict;
 use warnings;
 use JSON;
