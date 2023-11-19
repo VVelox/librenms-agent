@@ -1,0 +1,124 @@
+#!/usr/bin/env perl
+
+=head1 NAME
+
+php-fpm-v1 - LibreNMS JSON app extend for gatching PHP-FPM stats
+
+=head1 SYNOPSIS
+
+php-fpm-v1 [-
+
+=cut
+
+use warnings;
+use strict;
+use JSON;
+use File::Slurp;
+use Statistics::Lite qw(:all);
+use Getopt::Long;
+use Pod::Usage;
+use LWP::Simple;
+
+sub version {
+	print "php-fpm-v1 v. 0.0.1\n";
+}
+
+my $source_file = '/usr/local/etc/php-fpm_extend.conf';
+my $do_not_compress;
+my $help;
+my $version;
+GetOptions(
+		'c=s'     => \$source_file,
+		'd'       => \$do_not_compress,
+		'help'    => \$help,
+		'version' => \$version,
+) or die("Error in command line arguments\n");
+
+if ($version) {
+        &version;
+
+        exit 255;
+}
+
+if ($help) {
+	&version;
+
+	print "\n\n";
+
+	pod2usage( -exitval => 255, -verbose => 2, -output => \*STDOUT );
+}
+
+if ( !-f $source_file ) {
+	die 'Config file "' . $source_file . '" does not exist';
+}
+
+my $sources_raws = read_file($source_file);
+my @urls         = grep( /^[\ \t]*$/, grep( /^[\ \t]*#/, split( /\n/, $sources_raws ) ) );
+
+
+# store each url as a string with the the key to fetch it being the url
+my %fetched;
+
+# a list of URLs that could not be fetched
+my @unfetchable;
+
+# fetch all the urls prior to breaking them down
+foreach my $url (@urls) {
+	my $content = get( $url );
+	if (!defined($content)) {
+		push(@unfetchable, $url);
+	}else {
+		$fetched{$url}=$content;
+	}
+}
+
+# holds a list of ones that could not be URLs with results that could not be decoded
+my @undecodable;
+
+# pool info
+my %decoded_pools;
+
+# break each one down
+foreach my $url (keys(%fetched)) {
+	eval{
+		my $pool;
+		$pool = decode_json($fetched{$pool});
+		$decoded_pools{$url}=$pool;
+	};
+	if ($@) {
+		push(@undecodable, $url);
+	}
+}
+
+# holds a list of ones that do not appear to be the JSON we are looking for
+my @badinfo;
+
+# holds the resulting pool info
+
+#totals
+my %totals;
+
+# hold values for the totals
+my @cpu_total;
+my @memory_total;
+
+foreach my $url (keys(%decoded_pools)) {
+	my $pool=$decoded_pools{$url};
+
+	my $good=0;
+	if (defined($pool->{pool}) &&
+		defined($pool->{processes}) &&
+		defined($pool->{'accepted conn'}) &&
+		defined($pool->{'active processes'}) &&
+		defined($pool->{'idle processes'}) &&
+		defined($pool->{'listen queue'}) &&
+		defined($pool->{'listen queue len'}) &&
+		defined($pool->{'max active processes'}) &&
+		defined($pool->{'max children reached'}) &&
+		defined($pool->{'process manager'}) &&
+		defined($pool->{'listen queue'}) &&
+		defined($pool->{'slow requests'})
+		){
+		$good=1;
+	}
+}
