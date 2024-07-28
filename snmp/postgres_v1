@@ -1,0 +1,184 @@
+#!/usr/local/bin/perl
+
+=head1 NAME
+
+postgres - LibreNMS JSON style SNMP extend for monitoring Postgres
+
+=head1 VERSION
+
+0.4.0
+
+=head1 SYNOPSIS
+
+postgres B<-w> [B<-o> <cache base>] [B<-q>]
+
+postgres [<-b>] [B<-a>] [B<-z>]
+
+postgres --help|-h
+
+postgres --version|-v
+
+=head1 SNMPD CONFIG
+
+    extend postgres /usr/local/etc/snmp/postgres -b
+
+or if using cron...
+
+    # cron
+    4/5 * * * * root /usr/local/etc/snmp/poudriere -b -q
+
+    # snmpd.conf
+    extend postgres cat /var/cache/postgres_extend.json.snmp
+
+=head1 FLAGS
+
+=head2 -b
+
+Encapsulate the result in GZip+Base64 if -w is not used.
+
+=head2 -d
+
+Debug mode. This is noisy
+
+=head2 -q
+
+If -w is specified, do not print the results to stdout.
+
+=head2 -w
+
+Write the results out.
+
+=head2 -z
+
+Zero the stats from `poudriere status` if it the status for a jail/ports/set
+set is not not building.
+
+=head2 -o <cache base>
+
+Where to write the results to. Defaults to '/var/cache/postgres_extend.json',
+meaning it will be written out to the two locations.
+
+    /var/cache/postgres_extend.json
+    /var/cache/postgres_extend.json.snmp
+
+The later is for use with returning data for SNMP. Will be compressed
+if possible.
+
+=head1 REQUIREMENTS
+
+    File::Slurp
+    MIME::Base64
+    JSON
+    DBI
+    DBD::Pg
+
+=cut
+
+use strict;
+use warnings;
+use Getopt::Long;
+use File::Slurp;
+use MIME::Base64;
+use IO::Compress::Gzip qw(gzip $GzipError);
+use Pod::Usage;
+use JSON;
+use DBI;
+
+use Data::Dumper;
+
+#the version of returned data
+my $VERSION = 1;
+
+# ensure sbin is in the path
+$ENV{PATH} = $ENV{PATH} . ':/sbin:/usr/sbin:/usr/local/sbin:/bin:/usr/bin:/usr/local/bin';
+
+my $pretty;
+my $cache_base = '/var/cache/postgres_extend.json';
+my $write;
+my $compress;
+my $version;
+my $help;
+my $if_write_be_quiet;
+GetOptions(
+	b       => \$compress,
+	h       => \$help,
+	help    => \$help,
+	'o=s'   => \$cache_base,
+	q       => \$if_write_be_quiet,
+	v       => \$version,
+	w       => \$write,
+	version => \$version,
+);
+
+if ($version) {
+	pod2usage( -exitval => 255, -verbose => 99, -sections => qw(VERSION), -output => \*STDOUT, );
+	exit 255;
+}
+
+if ($help) {
+	pod2usage( -exitval => 255, -verbose => 2, -output => \*STDOUT, );
+	exit 255;
+}
+
+#the data to return
+my $to_return = {
+	'version'     => $VERSION,
+	'error'       => '0',
+	'errorString' => '',
+};
+my $data={};
+
+my $config={
+			'db'=> 'template1',
+			'user'=>'',
+			'password'=>'',
+			};
+
+###
+###
+### connect
+###
+###
+my $dbh = DBI->connect('dbi:Pg:dbname='.$config->{db}, $config->{user}, $config->{password}) || die $@;
+
+print Dumper($dbh->data_source());
+
+###
+###
+### finalize it
+###
+###
+exit 33;
+#add the data has to the return hash
+$to_return->{data} = $data;
+
+#finally render the JSON
+my $raw_json = encode_json($to_return);
+if ($write) {
+	write_file( $cache_base, $raw_json );
+	# compress and write to the cache file for it
+	my $compressed_string;
+	gzip \$raw_json => \$compressed_string;
+	my $compressed = encode_base64($compressed_string);
+	$compressed =~ s/\n//g;
+	$compressed = $compressed . "\n";
+	my $print_compressed = 0;
+	write_file( $cache_base . '.snmp', $compressed );
+
+	if ( !$if_write_be_quiet ) {
+		print $raw_json;
+	}
+} else {
+	if ( !$compress ) {
+		print $raw_json. "\n";
+		exit;
+	}
+
+	# compress and write to the cache file for it
+	my $compressed_string;
+	gzip \$raw_json => \$compressed_string;
+	my $compressed = encode_base64($compressed_string);
+	$compressed =~ s/\n//g;
+	$compressed = $compressed . "\n";
+	print $compressed;
+} ## end else [ if ($write) ]
