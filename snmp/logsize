@@ -124,14 +124,14 @@ This is in in reference to .data in the returned JSON.
 use warnings;
 use strict;
 use File::Find::Rule;
-use JSON;
-use Getopt::Std;
-use TOML;
-use Time::Piece;
-use MIME::Base64;
-use IO::Compress::Gzip qw(gzip $GzipError);
-use File::Slurp;
-use Statistics::Lite qw(:all);
+use JSON               qw(decode_json encode_json);
+use Getopt::Std        qw(getopts);
+use TOML               qw(from_toml);
+use Time::Piece        qw(localtime);
+use MIME::Base64       qw(encode_base64);
+use IO::Compress::Gzip qw(gzip);
+use File::Slurp        qw(read_file write_file);
+use Statistics::Lite   qw(max mean median min mode sum);
 
 $Getopt::Std::STANDARD_HELP_VERSION = 1;
 
@@ -338,7 +338,11 @@ foreach my $set (@sets) {
 		}
 		my $chomp = $config->{sets}{$set}{log_chomp};
 
-		my @files = File::Find::Rule->canonpath()->maxdepth(1)->file()->name( @{ $config->{sets}{$set}{log_end} } )
+		my @files
+			= File::Find::Rule->canonpath()
+			->maxdepth(1)
+			->file()
+			->name( @{ $config->{sets}{$set}{log_end} } )
 			->in( $config->{sets}{$set}{dir} );
 
 		$return_json->{data}{sets}{$set} = {
