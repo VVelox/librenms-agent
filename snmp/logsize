@@ -18,6 +18,12 @@ Compress the return via GZip+Base64.
 
 The config file to use.
 
+Checked in order of
+
+    /usr/local/etc/logsize.conf
+    /usr/local/etc/logsize.toml
+    /usr/local/etc/logsize.yaml
+
 =head1 SETUP
 
 Install the depends.
@@ -44,7 +50,8 @@ Then set it up in SNMPD.
 
 =head1 CONFIG
 
-The config format used is TOML.
+The config format used is TOML unless it ends in .yaml, in which case it is parsed as YAML
+via YAML::XS.
 
 Please note that variable part of log_end and log_chomp is dynamically generated at
 run time only if those various are undef. log_end and log_chomp if you want to custamize
@@ -67,6 +74,9 @@ In general best to leave these defaults alone.
                     log file name to use for reporting. $today_name is '%F' and
                   $today_name_alt1 is '%Y%m%d'.
         - Default :: ((\-\d\d\d\d\d\d\d\d)*\.log|\.today|\.json|\-$today_name|\-$today_name_alt1)$
+
+    - .look_back_days :: Set the value of look back days. Must be equal to or less than .max_age.
+        - Default :: 7
 
 The log specific sections resize under .set so if we want to create a set named var_log, the hash
 would be .set.var_log .
@@ -175,6 +185,11 @@ my %opts = ();
 getopts( 'f:b', \%opts );
 if ( !defined( $opts{f} ) ) {
 	$opts{f} = '/usr/local/etc/logsize.conf';
+	if ( -f '/usr/local/etc/logsize.toml' ) {
+		$opts{f} = '/usr/local/etc/logsize.toml';
+	} elsif ( -f '/usr/local/etc/logsize.yaml' ) {
+		$opts{f} = '/usr/local/etc/logsize.toml';
+	}
 }
 
 # if the config does not exist or is not readable, no point in continuing
@@ -194,8 +209,16 @@ if ( !-f $opts{f} ) {
 my $config;
 my $err;
 eval {
-	my $raw_toml = read_file( $opts{f} );
-	( $config, $err ) = from_toml($raw_toml);
+	my $raw_config_file = read_file( $opts{f} );
+	if ($opts{f} !~ /\.[Yy][Aa][Mm][Ll]$/) {
+		( $config, $err ) = from_toml($raw_config_file);
+	} else {
+		# use eval here so we can eval it as a string and never depend on YAML::XS unless it is installed
+		eval('use YAML::XS qw(Load); $config = Load($raw_config_file);');
+		if ($@) {
+			die $@;
+		}
+	}
 };
 if ($@) {
 	$return_json->{error}       = 3;
@@ -261,50 +284,49 @@ if ( -e $config->{cache_dir} && !-d $config->{cache_dir} ) {
 	}
 }
 
+# handle config for .look_back_days
+if ( !defined( $config->{look_back_days} ) ) {
+	$config->{look_back_days} = 7;
+} else {
+	if ( $config->{look_back_days} !~ /^[1-9]+[0-9]*$/ ) {
+		$return_json->{error}       = 8;
+		$return_json->{errorString} = 'The config var look_back_days does not match /^[1-9]+[0-9]*$/ .';
+		print encode_json($return_json) . "\n";
+		exit 7;
+	} elsif ( $config->{look_back_days} >= $config->{max_age} ) {
+		$return_json->{error} = 9;
+		$return_json->{errorString}
+			= 'The config var look_back_days,'
+			. $config->{look_back_days}
+			. ', greater than or equal to max_age, '
+			. $config->{max_age} . '.';
+		print encode_json($return_json) . "\n";
+		exit 7;
+	} ## end elsif ( $config->{look_back_days} >= $config->...)
+} ## end else [ if ( !defined( $config->{look_back_days} ))]
+
 ##
 ## load the cache now
 ##
 
-# gets time objects for now and a day ago
-my $t_minus_1d = localtime;
-my $t_minus_2d = localtime;
-my $t_minus_3d = localtime;
-my $t_minus_4d = localtime;
-my $t_minus_5d = localtime;
-my $t_minus_6d = localtime;
-my $t_minus_7d = localtime;
-$t_minus_1d -= 86400;
-$t_minus_2d -= ( 86400 * 2 );
-$t_minus_3d -= ( 86400 * 3 );
-$t_minus_4d -= ( 86400 * 4 );
-$t_minus_5d -= ( 86400 * 5 );
-$t_minus_6d -= ( 86400 * 6 );
-$t_minus_7d -= ( 86400 * 7 );
+# builds the lookback dates
+my $minus_d_hash = {};
+my @minus_d;
+my $look_back_day_int = 1;
+my $look_back_t_minus = localtime;
+while ( $look_back_day_int <= $config->{look_back_days} ) {
+	push( @minus_d, $look_back_day_int . 'd' );
+	$look_back_t_minus -= ( 86400 * $look_back_day_int );
+	$minus_d_hash->{ 'today_minus_' . $look_back_day_int . 'd_file' }
+		= $config->{cache_dir} . '/' . $look_back_t_minus->strftime('%F');
+	$look_back_day_int++;
+}
 
 my $today_cache_file = $config->{cache_dir} . '/' . $today_name;
-
-my $today_minus_1d_name = $t_minus_1d->strftime('%F');
-my $today_minus_2d_name = $t_minus_2d->strftime('%F');
-my $today_minus_3d_name = $t_minus_3d->strftime('%F');
-my $today_minus_4d_name = $t_minus_4d->strftime('%F');
-my $today_minus_5d_name = $t_minus_5d->strftime('%F');
-my $today_minus_6d_name = $t_minus_6d->strftime('%F');
-my $today_minus_7d_name = $t_minus_7d->strftime('%F');
-
-my $minus_d_hash = {
-	today_minus_1d_file => $config->{cache_dir} . '/' . $today_minus_1d_name,
-	today_minus_2d_file => $config->{cache_dir} . '/' . $today_minus_2d_name,
-	today_minus_3d_file => $config->{cache_dir} . '/' . $today_minus_3d_name,
-	today_minus_4d_file => $config->{cache_dir} . '/' . $today_minus_4d_name,
-	today_minus_5d_file => $config->{cache_dir} . '/' . $today_minus_5d_name,
-	today_minus_6d_file => $config->{cache_dir} . '/' . $today_minus_6d_name,
-	today_minus_7d_file => $config->{cache_dir} . '/' . $today_minus_7d_name,
-};
 
 my $today_cache = { sets => {} };
 
 my $today_minus_cache = {};
-my @minus_d           = ( '1d', '2d', '3d', '4d', '5d', '6d', '7d' );
 foreach my $d (@minus_d) {
 	eval { $today_minus_cache->{$d} = decode_json( read_file( $minus_d_hash->{ 'today_minus_' . $d . '_file' } ) ); };
 	if ($@) {
