@@ -36,8 +36,8 @@ Install the depends.
 
 Create the cache dir, by default "/var/cache/logsize_extend/".
 
-Either make sure SNMPD can write to the cache dir, by default "/var/cache/logsize_extend/", or
-set it up in cron and make sure SNMPD can write to it.
+Either make sure SNMPD can write to the cache dir, by default
+"/var/cache/logsize_extend/", or set it up in cron and make sure SNMPD can write to it.
 
 Then set it up in SNMPD.
 
@@ -53,9 +53,9 @@ Then set it up in SNMPD.
 The config format used is TOML unless it ends in .yaml, in which case it is parsed as YAML
 via YAML::XS.
 
-Please note that variable part of log_end and log_chomp is dynamically generated at
-run time only if those various are undef. log_end and log_chomp if you want to custamize
-them are better placed in dir specific sections.
+Please note that variable part of log_end and log_chomp is dynamically generated at run
+time only if those various are undef. log_end and log_chomp if you want to custamize them
+are better placed in dir specific sections.
 
 In general best to leave these defaults alone.
 
@@ -77,6 +77,30 @@ In general best to leave these defaults alone.
 
     - .look_back_days :: Set the value of look back days. Must be equal to or less than .max_age.
         - Default :: 7
+
+    - .alert_for_not_updated :: Alert for stuff not updated.
+        - Default :: 0
+
+    - .alert_for_not_updated_for :: Number of seconds to wait before alerting for a current log file.
+        - Default :: 10800
+
+    - .alert_for_not_updated_ignore :: Array of regexps to ignore for alert_for_not_updated.
+        - Default :: []
+
+    - .alert_for_not_updated_ignore_invert :: Invert the ignore check.
+        - Default :: 0
+
+    - .alert_for_not_seen :: Alert for stuff not updated.
+        - Default :: 0
+
+    - .alert_for_not_seen_for :: How many days it should not of been seen for till it alerts.
+        - Default :: 5
+
+    - .alert_for_not_seen_ignore :: Array of regexps to ignore for alert_for_not_updated .
+        - Default :: []
+
+    - .alert_for_not_seen_ignore_invert :: Invert the ignore check.
+        - Default :: 0
 
 The log specific sections resize under .set so if we want to create a set named var_log, the hash
 would be .set.var_log .
@@ -107,6 +131,13 @@ Multiple sets may be defined. Below creates var_log, suricata, and suricata_flow
     [sets.suricata_flows]
     dir="/var/log/suricata/flows/current"
 
+Watches /var/log/remote/offprem and alert for stuff that has not been seen for 7 days
+
+    [sets.remote_offprem]
+    dir="/var/log/remote_offprem"
+    alert_for_not_seen=1
+    alert_for_not_seen_ignore['^foo']
+
 =head1 RETURNED DATA
 
 This is in in reference to .data in the returned JSON.
@@ -126,7 +157,9 @@ This is in in reference to .data in the returned JSON.
     - .sets.*.min :: Min size of log files in the current set.
     - .sets.*.mode :: Mode size of log files in the current set.
     - .sets.*.size :: Total size of the current set.
-    - .sets.*.unseen :: A list of files seen in the past 7 days but not currently present.
+    - .sets.*.unseen :: A list of files seen in the past $look_back_days days but not currently present.
+    - .sets.*.unseen_alert :: A array of unseen files to alert upon.
+    - .sets.*.not_updated_alert :: A array of not updated files to alert upon.
     - .size :: Total size of all sets.
 
 =cut
@@ -142,6 +175,7 @@ use MIME::Base64       qw(encode_base64);
 use IO::Compress::Gzip qw(gzip);
 use File::Slurp        qw(read_file write_file);
 use Statistics::Lite   qw(max mean median min mode sum);
+use Scalar::Util qw(looks_like_number);
 
 $Getopt::Std::STANDARD_HELP_VERSION = 1;
 
@@ -210,7 +244,7 @@ my $config;
 my $err;
 eval {
 	my $raw_config_file = read_file( $opts{f} );
-	if ($opts{f} !~ /\.[Yy][Aa][Mm][Ll]$/) {
+	if ( $opts{f} !~ /\.[Yy][Aa][Mm][Ll]$/ ) {
 		( $config, $err ) = from_toml($raw_config_file);
 	} else {
 		# use eval here so we can eval it as a string and never depend on YAML::XS unless it is installed
@@ -263,11 +297,6 @@ if ( !defined( $config->{log_chomp} ) ) {
 		= '((\-\d\d\d\d\d\d\d\d)*\.log|\.today|\.json|\-' . $today_name . '|\-' . $today_name_alt1 . ')$';
 }
 
-# how long to keep a file in the cache
-if ( !defined( $config->{max_age} ) ) {
-	$config->{max_age} = 30;
-}
-
 # if it exists, make sure it is a directory
 if ( -e $config->{cache_dir} && !-d $config->{cache_dir} ) {
 	$return_json->{error}       = 6;
@@ -284,26 +313,55 @@ if ( -e $config->{cache_dir} && !-d $config->{cache_dir} ) {
 	}
 }
 
-# handle config for .look_back_days
-if ( !defined( $config->{look_back_days} ) ) {
-	$config->{look_back_days} = 7;
-} else {
-	if ( $config->{look_back_days} !~ /^[1-9]+[0-9]*$/ ) {
-		$return_json->{error}       = 8;
-		$return_json->{errorString} = 'The config var look_back_days does not match /^[1-9]+[0-9]*$/ .';
-		print encode_json($return_json) . "\n";
-		exit 7;
-	} elsif ( $config->{look_back_days} >= $config->{max_age} ) {
-		$return_json->{error} = 9;
-		$return_json->{errorString}
-			= 'The config var look_back_days,'
-			. $config->{look_back_days}
-			. ', greater than or equal to max_age, '
-			. $config->{max_age} . '.';
-		print encode_json($return_json) . "\n";
-		exit 7;
-	} ## end elsif ( $config->{look_back_days} >= $config->...)
-} ## end else [ if ( !defined( $config->{look_back_days} ))]
+#
+#
+# handle config for numeric vars
+#
+#
+my @numeric_vars = (
+	'max_age',                             'look_back_days',
+	'alert_for_not_updated',               'alert_for_not_updated_for',
+	'alert_for_not_updated_ignore_invert', 'alert_for_not_seen',
+	'alert_for_not_seen_for',              'alert_for_not_seen_ignore_invert',
+);
+my $boolean_vars_less_than_max_age    = { 'alert_for_not_seen_for'    => 1, };
+my $boolean_vars_less_than_288        = { 'alert_for_not_updated_for' => 1, };
+my $numeric_defaults = {
+	max_age                               => 30,
+	look_back_days                        => 7,
+	'alert_for_not_updated'               => 0,
+	'alert_for_not_updated_for'           => 24,
+	'alert_for_not_updated_ignore_invert' => 0,
+	'alert_for_not_seen'                  => 0,
+	'alert_for_not_seen_for'              => 5,
+	'alert_for_not_seen_ignore_invert'    => 0,
+};
+foreach my $numeric_var (@numeric_vars) {
+	if ( !defined( $config->{$numeric_var} ) ) {
+		$config->{$numeric_var} = $numeric_defaults->{$numeric_var};
+	} else {
+		if (!looks_like_nunmber($config->{numeric_var})) {
+			$return_json->{error}       = 8;
+			$return_json->{errorString} = 'The config var '.$numeric_var.', "'.$config->{$numeric_var}.'", does not appear to be a number.';
+			print encode_json($return_json) . "\n";
+			exit 8;
+		}
+		if ($config->{numeric_var} < 0) {
+			$return_json->{error}       = 9;
+			$return_json->{errorString} = 'The config var '.$numeric_var.', "'.$config->{$numeric_var}.'", is less than 0.';
+			print encode_json($return_json) . "\n";
+			exit 9;
+		}
+		if ($boolean_vars_less_than_max_age->{$numeric_var}) {
+			if ($config->{numeric_var} >= $config->{max_age}) {
+				$return_json->{error}       = 10;
+				$return_json->{errorString} = 'The config var '.$numeric_var.', "'.$config->{$numeric_var}.'", is equal to or greater than max age.';
+				print encode_json($return_json) . "\n";
+				exit 10;
+			}
+		}
+	} ## end else [ if ( !defined( $config->{$numeric_var} ) )]
+} ## end foreach my $numeric_var (@numeric_vars)
 
 ##
 ## load the cache now
