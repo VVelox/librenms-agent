@@ -134,6 +134,9 @@ directory foo.bar the following...
 
 Would result in logs named foo.bar and foo.bar_ssl.
 
+If the suffix is the same as the directory name, it is dropped if auto_multidir_auto_suffix_drop
+is true. So foo.bar/foo.bar-access.log would result in a log named foo.bar instead of foo.bar_foo.bar .
+
     - auto_multidir_end_regex :: What to match files ending in.
         default :: .log$
 
@@ -143,6 +146,9 @@ Would result in logs named foo.bar and foo.bar_ssl.
     - auto_multidir_error_regex :: What will be prepended to the end regexp for looking for error log files.
         default :: \-*error
 
+    - auto_multidir_auto_suffix_drop :: If the suffix should be dropped when it matches the directory name.
+        default :: 1
+
     # example
     {
         "auto": 1,
@@ -150,7 +156,8 @@ Would result in logs named foo.bar and foo.bar_ssl.
         "auto_dir": "/var/log/apache2/",
         "auto_multidir_end_regex": ".log$",
         "auto_multidir_access_regex": "\\-*access",
-        "auto_multidir_error_regex": "\\-*error"
+        "auto_multidir_error_regex": "\\-*error",
+        "auto_multidir_auto_suffix_drop": 1
     }
 
 =head1 REQUIREMENTS
@@ -306,6 +313,9 @@ if ( $config->{auto} ) {
 	if ( !defined( $config->{auto_multidir_error_regex} ) ) {
 		$config->{auto_multidir_error_regex} = '\-*error';
 	}
+	if ( !defined( $config->{auto_multidir_auto_suffix_drop} ) ) {
+		$config->{auto_multidir_auto_suffix_drop} = 1;
+	}
 	if ( $config->{auto_mode} ne 'single' && $config->{auto_mode} ne 'multidir' ) {
 		die( '"' . $config->{auto_mode} . '" is not a recognized auto_mode... single or multidir' );
 	}
@@ -355,6 +365,9 @@ if ( $config->{auto} ) {
 				$suffix =~ s/^[\-\_\.]+//;
 				$suffix =~ s/[\-\_\.]+$//;
 				my $name = $site;
+				if ( $config->{auto_multidir_auto_suffix_drop} && $suffix eq $site ) {
+					$suffix = '';
+				}
 				if ( $suffix ne '' ) {
 					$name = $name . '_' . $suffix;
 				}
